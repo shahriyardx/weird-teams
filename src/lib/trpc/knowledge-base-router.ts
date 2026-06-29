@@ -2,7 +2,21 @@ import { z } from "zod"
 import { TRPCError } from "@trpc/server"
 import { prisma } from "@/lib/prisma"
 import { deleteFromR2 } from "@/lib/r2"
-import { router, protectedProcedure, getMember } from "./server"
+import { router, protectedProcedure, getMember, assertOrg } from "./server"
+
+/** Verifies a team (if provided) belongs to the given org. */
+async function assertTeamInOrg(
+  teamId: string | undefined,
+  organizationId: string,
+) {
+  if (!teamId) return
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { organizationId: true },
+  })
+  if (!team) throw new TRPCError({ code: "NOT_FOUND" })
+  assertOrg(team.organizationId, organizationId)
+}
 
 export const knowledgeBaseRouter = router({
   // ── Categories ──
@@ -47,6 +61,8 @@ export const knowledgeBaseRouter = router({
     .mutation(async ({ ctx, input }) => {
       const member = await getMember(input.organizationId, ctx.session.user.id)
       if (!member) throw new TRPCError({ code: "FORBIDDEN" })
+
+      await assertTeamInOrg(input.teamId, input.organizationId)
 
       const category = await prisma.kbCategory.create({
         data: {
@@ -375,6 +391,15 @@ export const knowledgeBaseRouter = router({
     .mutation(async ({ ctx, input }) => {
       const member = await getMember(input.organizationId, ctx.session.user.id)
       if (!member) throw new TRPCError({ code: "FORBIDDEN" })
+
+      const subcategory = await prisma.kbSubcategory.findUnique({
+        where: { id: input.subcategoryId },
+        select: { organizationId: true },
+      })
+      if (!subcategory) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(subcategory.organizationId, input.organizationId)
+
+      await assertTeamInOrg(input.teamId, input.organizationId)
 
       const item = await prisma.kbItem.create({
         data: {

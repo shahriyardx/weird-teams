@@ -28,6 +28,18 @@ export async function getMember(organizationId: string, userId: string) {
   })
 }
 
+/**
+ * Asserts a fetched resource actually belongs to the org the caller proved
+ * membership of. `getMember(input.organizationId, ...)` only proves the caller
+ * belongs to the org they *claim* — without this, a member of org A can act on
+ * a resource fetched by bare id from org B (cross-tenant IDOR).
+ */
+export function assertOrg(resourceOrgId: string, expectedOrgId: string) {
+  if (resourceOrgId !== expectedOrgId) {
+    throw new TRPCError({ code: "FORBIDDEN" })
+  }
+}
+
 export function calcProgress(objectives: { progress: number }[]) {
   if (objectives.length === 0) return 0
   return Math.round(

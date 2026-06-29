@@ -64,7 +64,7 @@ export const auth = betterAuth({
     twoFactor({ allowPasswordless: true }),
     organization({
       teams: { enabled: true },
-      requireEmailVerificationOnInvitation: false,
+      requireEmailVerificationOnInvitation: true,
       organizationHooks: {
         beforeCreateOrganization: async ({ user }) => {
           if (!user.emailVerified) {

@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { TRPCError } from "@trpc/server"
 import { prisma } from "@/lib/prisma"
-import { router, protectedProcedure, getMember } from "./server"
+import { router, protectedProcedure, getMember, assertOrg } from "./server"
 import { deleteFromR2 } from "@/lib/r2"
 
 export const announcementRouter = router({
@@ -51,6 +51,9 @@ export const announcementRouter = router({
           where.id = "none"
         }
       } else if (input.teamId) {
+        if (!isOrgAdmin && !(userTeamIds ?? []).includes(input.teamId)) {
+          throw new TRPCError({ code: "FORBIDDEN" })
+        }
         where.teamId = input.teamId
       } else if (!isOrgAdmin && userTeamIds) {
         where.OR = [{ teamId: null }, { teamId: { in: userTeamIds } }]
@@ -144,6 +147,7 @@ export const announcementRouter = router({
         },
       })
       if (!announcement) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(announcement.organizationId, input.organizationId)
 
       const liked = !!(await prisma.announcementLike.findUnique({
         where: {
@@ -186,6 +190,16 @@ export const announcementRouter = router({
     .mutation(async ({ ctx, input }) => {
       const member = await getMember(input.organizationId, ctx.session.user.id)
       if (!member) throw new TRPCError({ code: "FORBIDDEN" })
+
+      // Team must belong to the same org (prevents cross-org team references).
+      if (input.teamId) {
+        const teamOrg = await prisma.team.findUnique({
+          where: { id: input.teamId },
+          select: { organizationId: true },
+        })
+        if (!teamOrg) throw new TRPCError({ code: "NOT_FOUND" })
+        assertOrg(teamOrg.organizationId, input.organizationId)
+      }
 
       const isOrgAdmin = member.role === "owner" || member.role === "admin"
 
@@ -311,6 +325,7 @@ export const announcementRouter = router({
         where: { id: input.id },
       })
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(existing.organizationId, input.organizationId)
 
       const isOrgAdmin = member.role === "owner" || member.role === "admin"
       const isAuthor = existing.authorId === ctx.session.user.id
@@ -386,6 +401,7 @@ export const announcementRouter = router({
         include: { attachments: { select: { url: true } } },
       })
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(existing.organizationId, input.organizationId)
 
       const isOrgAdmin = member.role === "owner" || member.role === "admin"
       const isAuthor = existing.authorId === ctx.session.user.id
@@ -425,6 +441,7 @@ export const announcementRouter = router({
         },
       })
       if (!attachment) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(attachment.announcement.organizationId, input.organizationId)
 
       const isOrgAdmin = member.role === "owner" || member.role === "admin"
       const isAuthor = attachment.announcement.authorId === ctx.session.user.id
@@ -452,9 +469,15 @@ export const announcementRouter = router({
 
       const announcement = await prisma.announcement.findUnique({
         where: { id: input.announcementId },
-        select: { enableComments: true, authorId: true, title: true },
+        select: {
+          enableComments: true,
+          authorId: true,
+          title: true,
+          organizationId: true,
+        },
       })
       if (!announcement) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(announcement.organizationId, input.organizationId)
       if (!announcement.enableComments)
         throw new TRPCError({ code: "FORBIDDEN" })
 
@@ -519,9 +542,12 @@ export const announcementRouter = router({
 
       const existing = await prisma.announcementComment.findUnique({
         where: { id: input.id },
-        include: { announcement: { select: { authorId: true } } },
+        include: {
+          announcement: { select: { authorId: true, organizationId: true } },
+        },
       })
       if (!existing) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(existing.announcement.organizationId, input.organizationId)
 
       const isOrgAdmin = member.role === "owner" || member.role === "admin"
       const isCommentAuthor = existing.authorId === ctx.session.user.id
@@ -546,9 +572,10 @@ export const announcementRouter = router({
 
       const announcement = await prisma.announcement.findUnique({
         where: { id: input.announcementId },
-        select: { enableLikes: true },
+        select: { enableLikes: true, organizationId: true },
       })
       if (!announcement) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(announcement.organizationId, input.organizationId)
       if (!announcement.enableLikes) throw new TRPCError({ code: "FORBIDDEN" })
 
       const existing = await prisma.announcementLike.findUnique({

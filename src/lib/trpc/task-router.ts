@@ -263,7 +263,6 @@ export const taskRouter = router({
       }
 
       const isOwner = input.dashboard === "owner"
-      const isLeader = input.dashboard === "leader"
       const teamId = input.teamId ?? undefined
 
       const [myTasks, orgTasks, teamTasks, assignedTasks] = await Promise.all([
@@ -294,13 +293,12 @@ export const taskRouter = router({
             ...(teamId ? { teamId } : { teamId: null }),
           },
         }),
-        // Assigned Tasks: assigned to me, todo status
+        // Assigned Tasks: every todo assigned to me across the org (unscoped)
         prisma.task.count({
           where: {
             organizationId: input.organizationId,
             status: "todo",
             assignees: { some: { memberId: member.id } },
-            ...(isOwner ? { teamId: null } : teamId ? { teamId } : {}),
           },
         }),
       ])

@@ -12,6 +12,9 @@ export const memberRouter = router({
       }),
     )
     .query(async ({ ctx, input }) => {
+      const caller = await getMember(input.organizationId, ctx.session.user.id)
+      if (!caller) throw new TRPCError({ code: "FORBIDDEN" })
+
       const members = await prisma.member.findMany({
         where: {
           organizationId: input.organizationId,

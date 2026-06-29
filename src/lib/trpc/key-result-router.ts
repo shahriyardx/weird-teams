@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { TRPCError } from "@trpc/server"
 import { prisma } from "@/lib/prisma"
-import { router, protectedProcedure, getMember } from "./server"
+import { router, protectedProcedure, getMember, assertOrg } from "./server"
 
 function calcProgress(currentValue: number, targetValue: number): number {
   if (targetValue <= 0) return 0
@@ -25,6 +25,13 @@ export const keyResultRouter = router({
 
       const member = await getMember(orgId, ctx.session.user.id)
       if (!member) throw new TRPCError({ code: "FORBIDDEN" })
+
+      const objective = await prisma.objective.findUnique({
+        where: { id: input.objectiveId },
+        select: { organizationId: true },
+      })
+      if (!objective) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(objective.organizationId, orgId)
 
       const keyResults = await prisma.keyResult.findMany({
         where: { objectiveId: input.objectiveId },
@@ -473,6 +480,15 @@ export const keyResultRouter = router({
 
       const isAdmin = member.role === "admin" || member.role === "owner"
 
+      // Every KR being reordered must belong to the caller's org.
+      const reorderIds = [...new Set(input.items.map((i) => i.id))]
+      const ownedCount = await prisma.keyResult.count({
+        where: { id: { in: reorderIds }, organizationId: orgId },
+      })
+      if (ownedCount !== reorderIds.length) {
+        throw new TRPCError({ code: "FORBIDDEN" })
+      }
+
       if (!isAdmin) {
         const firstKr = input.items[0]
         if (!firstKr) throw new TRPCError({ code: "BAD_REQUEST" })
@@ -561,6 +577,15 @@ export const keyResultRouter = router({
         where: { id: input.krId },
       })
       if (!kr) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(kr.organizationId, orgId)
+
+      // Target objective must also belong to the caller's org.
+      const targetObjective = await prisma.objective.findUnique({
+        where: { id: input.targetObjectiveId },
+        select: { organizationId: true },
+      })
+      if (!targetObjective) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(targetObjective.organizationId, orgId)
 
       if (!isAdmin) {
         const [sourceObj, targetObj] = await Promise.all([

@@ -2,12 +2,17 @@ import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { safeCallbackURL } from "@/lib/utils"
 import { LoginForm } from "@/components/auth/login-form"
 
 export default async function LoginPage(props: {
   searchParams: Promise<{ callbackURL?: string }>
 }) {
-  const { callbackURL } = await props.searchParams
+  const { callbackURL: rawCallbackURL } = await props.searchParams
+  // Only allow safe same-origin relative paths to prevent open redirects.
+  const callbackURL = rawCallbackURL
+    ? safeCallbackURL(rawCallbackURL, "")
+    : undefined
   const h = await headers()
   const session = await auth.api.getSession({ headers: h })
 

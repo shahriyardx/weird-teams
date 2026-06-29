@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { TRPCError } from "@trpc/server"
 import { prisma } from "@/lib/prisma"
-import { router, protectedProcedure, getMember } from "./server"
+import { router, protectedProcedure, getMember, assertOrg } from "./server"
 
 export const checkInRouter = router({
   list: protectedProcedure
@@ -16,6 +16,13 @@ export const checkInRouter = router({
     .query(async ({ ctx, input }) => {
       const member = await getMember(input.organizationId, ctx.session.user.id)
       if (!member) throw new TRPCError({ code: "FORBIDDEN" })
+
+      const kr = await prisma.keyResult.findUnique({
+        where: { id: input.keyResultId },
+        select: { organizationId: true },
+      })
+      if (!kr) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(kr.organizationId, input.organizationId)
 
       const [checkIns, total] = await prisma.$transaction(async (tx) => {
         const items = await tx.checkIn.findMany({
@@ -61,6 +68,7 @@ export const checkInRouter = router({
         include: { objective: { include: { cycle: true } } },
       })
       if (!kr) throw new TRPCError({ code: "NOT_FOUND" })
+      assertOrg(kr.organizationId, input.organizationId)
 
       // Permission: KR owner, admin/owner, or team leader of the objective's team can check in
       if (!isAdmin && kr.ownerId !== member.id) {
