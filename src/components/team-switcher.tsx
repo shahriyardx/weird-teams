@@ -2,7 +2,7 @@
 
 import { useRouter, useParams } from "next/navigation"
 import Image from "next/image"
-import { CaretUpDownIcon } from "@phosphor-icons/react"
+import { CaretUpDownIcon, CheckIcon, PlusIcon } from "@phosphor-icons/react"
 import { useOrganization } from "@/lib/organization-context"
 import { authClient } from "@/lib/auth-client"
 import { api } from "@/lib/trpc/client"
@@ -11,6 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -54,7 +55,8 @@ export function TeamSwitcher() {
   const router = useRouter()
   const params = useParams()
   const { isMobile } = useSidebar()
-  const { session, organization } = useOrganization()
+  const { session, organization, organizations, onSwitchOrg } =
+    useOrganization()
   const slug = params.companySlug as string | undefined
 
   const activeTeamId = session?.session?.activeTeamId
@@ -79,10 +81,17 @@ export function TeamSwitcher() {
   const activeTeam = teams.find((t) => t.id === activeTeamId)
 
   async function handleSwitchTeam(teamId: string) {
+    if (teamId === activeTeamId) return
     await authClient.organization.setActiveTeam({ teamId })
     const target = teams.find((t) => t.id === teamId)
     const isLeader = target?.leader?.user.id === session?.user?.id
     router.push(isLeader ? `/${slug}/manage-team` : `/${slug}/team`)
+  }
+
+  async function handleSwitchOrg(orgId: string, orgSlug: string) {
+    if (orgId === organization?.id) return
+    await onSwitchOrg(orgId)
+    router.push(`/${orgSlug}`)
   }
 
   if (!organization) return null
@@ -119,27 +128,64 @@ export function TeamSwitcher() {
             sideOffset={4}
           >
             <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Teams
+              Organizations
             </DropdownMenuLabel>
-            {teams.map((team) => (
+            {organizations.map((o) => (
               <DropdownMenuItem
-                key={team.id}
-                onClick={() => handleSwitchTeam(team.id)}
+                key={o.id}
+                onClick={() => handleSwitchOrg(o.id, o.slug)}
                 className="gap-2 p-2"
               >
-                <span className="flex size-6 items-center justify-center rounded-md border text-[10px] font-medium shrink-0">
-                  {team.name.charAt(0)}
+                <OrgLogo
+                  src={o.logo}
+                  name={o.name}
+                  className="size-6 rounded-md"
+                />
+                <span className="flex-1 min-w-0 truncate text-sm">
+                  {o.name}
                 </span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm">{team.name}</span>
-                </div>
-                {team.id === activeTeamId && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    (active)
-                  </span>
+                {o.id === organization.id && (
+                  <CheckIcon className="size-4 shrink-0 text-muted-foreground" />
                 )}
               </DropdownMenuItem>
             ))}
+            <DropdownMenuItem
+              className="gap-2 p-2"
+              onClick={() => router.push("/onboard/add-organization")}
+            >
+              <div className="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                <PlusIcon className="size-4" />
+              </div>
+              <span className="font-medium text-muted-foreground">
+                Add organization
+              </span>
+            </DropdownMenuItem>
+
+            {teams.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Teams
+                </DropdownMenuLabel>
+                {teams.map((team) => (
+                  <DropdownMenuItem
+                    key={team.id}
+                    onClick={() => handleSwitchTeam(team.id)}
+                    className="gap-2 p-2"
+                  >
+                    <span className="flex size-6 items-center justify-center rounded-md border text-[10px] font-medium shrink-0">
+                      {team.name.charAt(0)}
+                    </span>
+                    <span className="flex-1 min-w-0 truncate text-sm">
+                      {team.name}
+                    </span>
+                    {team.id === activeTeamId && (
+                      <CheckIcon className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
