@@ -55,8 +55,9 @@ export function TeamSwitcher() {
   const router = useRouter()
   const params = useParams()
   const { isMobile } = useSidebar()
-  const { session, organization, organizations, onSwitchOrg } =
+  const { session, organization, organizations, onSwitchOrg, refetchSession } =
     useOrganization()
+  const utils = api.useUtils()
   const slug = params.companySlug as string | undefined
 
   const activeTeamId = session?.session?.activeTeamId
@@ -91,6 +92,19 @@ export function TeamSwitcher() {
   async function handleSwitchOrg(orgId: string, orgSlug: string) {
     if (orgId === organization?.id) return
     await onSwitchOrg(orgId)
+
+    // Switching org clears the active team, so auto-select the first team the
+    // user has access to in the new org (mirrors the server-side default in
+    // [companySlug]/page.tsx) instead of leaving them on "No team".
+    const res = (await utils.team.getMyTeams.fetch({
+      organizationId: orgId,
+    })) as { teams?: Array<{ id: string }> } | undefined
+    const firstTeam = res?.teams?.[0]
+    if (firstTeam) {
+      await authClient.organization.setActiveTeam({ teamId: firstTeam.id })
+      await refetchSession()
+    }
+
     router.push(`/${orgSlug}`)
   }
 
