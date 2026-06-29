@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter, useParams } from "next/navigation"
+import { useRouter, useParams, usePathname } from "next/navigation"
 import Image from "next/image"
 import { CaretUpDownIcon, CheckIcon, PlusIcon } from "@phosphor-icons/react"
 import { useOrganization } from "@/lib/organization-context"
@@ -54,6 +54,7 @@ function OrgLogo({
 export function TeamSwitcher() {
   const router = useRouter()
   const params = useParams()
+  const pathname = usePathname()
   const { isMobile } = useSidebar()
   const { session, organization, organizations, onSwitchOrg, refetchSession } =
     useOrganization()
@@ -84,9 +85,21 @@ export function TeamSwitcher() {
   async function handleSwitchTeam(teamId: string) {
     if (teamId === activeTeamId) return
     await authClient.organization.setActiveTeam({ teamId })
+    // Refresh the client session + refetch queries so the sidebar and page
+    // pick up the new team in place.
+    await refetchSession()
+    await utils.invalidate()
+
     const target = teams.find((t) => t.id === teamId)
     const isLeader = target?.leader?.user.id === session?.user?.id
-    router.push(isLeader ? `/${slug}/manage-team` : `/${slug}/team`)
+    const dest = isLeader ? `/${slug}/manage-team` : `/${slug}/team`
+
+    // Only navigate when moving to a different dashboard section. Switching
+    // between teams of the same role keeps the current route, so the page
+    // updates from the session/query refresh above — no full-page reload flash.
+    if (!pathname?.startsWith(dest)) {
+      router.push(dest)
+    }
   }
 
   async function handleSwitchOrg(orgId: string, orgSlug: string) {
